@@ -1,6 +1,6 @@
-import bluetooth
-from machine import Pin
+from machine import Pin, UART
 import time
+from ld2410 import LD2410
 from utelegram import Bot
 from wifi_connection import connect_wifi
 from led_control import tripl_led
@@ -14,32 +14,13 @@ led = Pin(22, Pin.OUT)
 # Инициализация бота
 bot = Bot(TOKEN)
 
-# Инициализация BLE
-ble = bluetooth.BLE()
-ble.active(True)
+# Инициализация UART
+uart = UART(2, baudrate=256000, tx=17, rx=16, timeout=10)
 
-SERVICE_UUID = bluetooth.UUID(0x1234)  # Уникальный UUID сервиса
+# Инициализация датчика
+sensor = LD2410(uart)
 
-# Функция для обработки найденных устройств
-def scan_callback(addr_type, addr, adv_data):
-    print("Найдено устройство:", addr)
-    # Преобразуем рекламные данные в строку и ищем нужный UUID
-    adv_data_str = ''.join([chr(i) for i in adv_data])
-    if str(SERVICE_UUID) in adv_data_str:
-        print(f"Найдено устройство с нужным UUID: {addr}")
-
-# Функция для старта сканирования
-def start_scan():
-    print("Начало сканирования...")
-    ble.gap_scan(2000, 30000, 30000)  # Сканирование 2 секунды
-    # Подключаем callback для обработки результатов сканирования
-    ble.gap_scan_cb(scan_callback)
-
-# Подключение к устройству
-def connect_to_device(addr):
-    print(f"Подключаемся к {addr}...")
-    ble.gap_connect(addr)
-
+sensor.set_max_values(8, 8, 1500)
 
 # Добавляем обработчики команд
 @bot.add_command_handler('on')
@@ -93,6 +74,50 @@ def handle_start(update):
     print("Клавиатура отправлена!")
     print(update.message['from'])
 
+@bot.add_command_handler('status')
+def handle_status(update):
+    print("Команда /status получена.")
+    try:
+        chat_id = update.message['chat']['id']
+        bot.send_message(chat_id, "Датчик работает!")
+        print("Ответ отправлен!")
+    except Exception as e:
+        print("Ошибка при ответе на /status:", e)
+
+
+@bot.add_command_handler('radar')
+def handle_radar(update):
+    print("Команда /radar получена.")
+
+    try:
+        sensor.update()  # обязательно обновляем перед чтением
+        target_data = sensor.get_target_data()
+        print("Target data:", target_data)
+
+        if target_data and isinstance(target_data, tuple) and len(target_data) == 6:
+            target_state = target_data[0]
+            detection_distance = target_data[1]
+            move_distance = target_data[2]
+
+            if target_state == 1:
+                message = (
+                    f"Обнаружено движение!\n"
+                    f"Дистанция: {detection_distance / 100:.2f} м\n"
+                    f"Движение: {move_distance / 100:.2f} м"
+                )
+            else:
+                message = "Движения не обнаружено."
+
+        else:
+            message = "Нет данных от радара."
+
+        update.reply(message)
+        print("Ответ отправлен в Telegram.")
+
+    except Exception as e:
+        print("Ошибка в radar handler:", e)
+        update.reply("Произошла ошибка при чтении с радара.")
+
 
 def start():
     print("Программа запущена!")
@@ -117,9 +142,7 @@ def start():
 
         running_command()
 
-        start_scan()
-
-        time.sleep(5)  # Пауза между попытками подключения
+        time.sleep(3)
 
 
 start()
