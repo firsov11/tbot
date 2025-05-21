@@ -14,13 +14,25 @@ led = Pin(22, Pin.OUT)
 # Инициализация бота
 bot = Bot(TOKEN)
 
-# Инициализация UART
-uart = UART(2, baudrate=256000, tx=17, rx=16, timeout=10)
+ot1 = Pin(25, Pin.IN)
 
-# Инициализация датчика
-sensor = LD2410(uart)
+presence = ot1.value()
 
-sensor.set_max_values(8, 8, 1500)
+def radar():
+
+
+
+    if presence:
+        print("🔵 Присутствие обнаружено (OT1)")
+    else:
+        print("⚪ Нет присутствия")
+
+    print("-----")
+
+@bot.add_command_handler('radar')
+def handle_radar(update):
+    update.reply(presence)
+    print(presence)
 
 # Добавляем обработчики команд
 @bot.add_command_handler('on')
@@ -74,51 +86,6 @@ def handle_start(update):
     print("Клавиатура отправлена!")
     print(update.message['from'])
 
-@bot.add_command_handler('status')
-def handle_status(update):
-    print("Команда /status получена.")
-    try:
-        chat_id = update.message['chat']['id']
-        bot.send_message(chat_id, "Датчик работает!")
-        print("Ответ отправлен!")
-    except Exception as e:
-        print("Ошибка при ответе на /status:", e)
-
-
-@bot.add_command_handler('radar')
-def handle_radar(update):
-    print("Команда /radar получена.")
-
-    try:
-        sensor.update()  # обязательно обновляем перед чтением
-        target_data = sensor.get_target_data()
-        print("Target data:", target_data)
-
-        if target_data and isinstance(target_data, tuple) and len(target_data) == 6:
-            target_state = target_data[0]
-            detection_distance = target_data[1]
-            move_distance = target_data[2]
-
-            if target_state == 1:
-                message = (
-                    f"Обнаружено движение!\n"
-                    f"Дистанция: {detection_distance / 100:.2f} м\n"
-                    f"Движение: {move_distance / 100:.2f} м"
-                )
-            else:
-                message = "Движения не обнаружено."
-
-        else:
-            message = "Нет данных от радара."
-
-        update.reply(message)
-        print("Ответ отправлен в Telegram.")
-
-    except Exception as e:
-        print("Ошибка в radar handler:", e)
-        update.reply("Произошла ошибка при чтении с радара.")
-
-
 def start():
     print("Программа запущена!")
 
@@ -142,7 +109,10 @@ def start():
 
         running_command()
 
+        radar()
+
         time.sleep(3)
 
 
 start()
+
